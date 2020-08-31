@@ -17,11 +17,8 @@ if(!("name" in args))
 
 var name = args.name
 var primary = false
-var directory = name
 var rcmlExists = fs.existsSync(rootCml)
-
-if("directory" in args)
-	directory = args.directory
+var type = ""
 
 if(!("primary" in args) && !("secondary" in args))
 {
@@ -60,25 +57,77 @@ else
 	}
 }
 
+if(!primary)
+{
+	if("type" in args)
+		type = args.type;
+	else
+	{
+		console.log(" - Project type not provided; assuming executable")
+		type = "executable"
+	}
+
+	if(type != "executable" && type != "stlib" && type != "dylib")
+	{
+		console.log(colors.red(` *** Invalid project type ${type}`))
+		process.exit(-1)
+	}
+}
+
+var directory = ""
+if(primary)
+	directory = "."
+else
+	directory = name
+
+if("directory" in args)
+	directory = args.directory
+
 console.log()
 console.log(colors.bold(` - Creating ${(primary) ? "primary" : "secondary"} CMake project ${colors.green(name)} @ '${directory}'`))
 
 fs.ensureDirSync(directory)
 
+var path = directory + "/CMakeLists.txt"
 if(primary)
 {
+	fs.appendFileSync(path,
+`
+cmake_minimum_required (VERSION 3.8)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
+project ("${name}")\n
+`
+		)
 }
 else
 {
-	var stream = fs.openSync(directory + "/CMakeLists.txt", "wx")
-	stream.write(
+	fs.appendFileSync(path,
 `
 set(CMW_ProjectName ${name})
-
 `
 		)
 
+	switch(type)
+	{
+	case "executable":
+		fs.writeFileSync(directory + `/${name}.cpp`, "")
+		fs.appendFileSync(path, `add_executable (\${CMW_ProjectName} ${name}.cpp)\n`)
+		break;
+	case "stlib":
+		fs.writeFileSync(directory + `/${name}.cpp`, "")
+		fs.writeFileSync(directory + `/${name}.hpp`, "")
+		fs.appendFileSync(path, `add_library (\${CMW_ProjectName} STATIC ${name}.cpp ${name}.hpp)\n`)
+		break;
+	case "dylib":
+		fs.writeFileSync(directory + `/${name}.cpp`, "")
+		fs.writeFileSync(directory + `/${name}.hpp`, "")
+		fs.appendFileSync(path, `add_library (\${CMW_ProjectName} SHARED ${name}.cpp ${name}.hpp)\n`)
+		break;
+	}
+
 	if(rcmlExists)
-		fs.appendFileSync(rootCml, `add_subdirectory(${directory})`)
+		fs.appendFileSync(rootCml, `add_subdirectory(${directory})\n`)
 }
